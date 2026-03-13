@@ -1,0 +1,79 @@
+"""
+Upload inequality analysis files to GitHub
+==========================================
+Fill in the 3 variables below, then run:
+    pip install requests
+    python upload_to_github.py
+"""
+
+import base64
+import os
+import requests
+
+# ── FILL THESE IN ──────────────────────────────────────────────────────────────
+GITHUB_TOKEN = "your_personal_access_token"   # github.com → Settings → Developer settings → Personal access tokens
+REPO_OWNER   = "your_github_username"
+REPO_NAME    = "your_repo_name"
+# Optional: put files inside a folder in the repo, e.g. "inequality-analysis"
+# Leave as "" to put them in the root
+FOLDER       = "inequality-analysis"
+# ──────────────────────────────────────────────────────────────────────────────
+
+FILES = [
+    "README.md",
+    "inequality_charts.py",
+    "build_presentation.py",
+    "inequality_presentation.pptx",
+]
+
+HEADERS = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github+json",
+}
+
+def upload_file(local_path, repo_path):
+    with open(local_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode()
+
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{repo_path}"
+
+    # Check if file already exists (to get its SHA for update)
+    r = requests.get(url, headers=HEADERS)
+    sha = r.json().get("sha") if r.status_code == 200 else None
+
+    payload = {
+        "message": f"Add {os.path.basename(local_path)}",
+        "content": content,
+    }
+    if sha:
+        payload["sha"] = sha   # required for updates
+
+    r = requests.put(url, json=payload, headers=HEADERS)
+
+    if r.status_code in (200, 201):
+        action = "Updated" if sha else "Uploaded"
+        print(f"  {action}: {repo_path}")
+    else:
+        print(f"  ERROR {r.status_code} on {repo_path}: {r.json().get('message')}")
+
+def main():
+    # Verify token works
+    r = requests.get("https://api.github.com/user", headers=HEADERS)
+    if r.status_code != 200:
+        print("ERROR: Token invalid or expired. Check GITHUB_TOKEN.")
+        return
+    print(f"Authenticated as: {r.json()['login']}\n")
+
+    for filename in FILES:
+        if not os.path.exists(filename):
+            print(f"  SKIPPED (not found): {filename}")
+            continue
+        repo_path = f"{FOLDER}/{filename}" if FOLDER else filename
+        upload_file(filename, repo_path)
+
+    base_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}"
+    folder_url = f"{base_url}/tree/main/{FOLDER}" if FOLDER else base_url
+    print(f"\nDone! View your repo at: {folder_url}")
+
+if __name__ == "__main__":
+    main()
